@@ -277,10 +277,11 @@ def extract_subsidy_caveat(res: dict) -> str | None:
     if after and before and str(after) != str(before):
         desc = extra.get("priceDesc", "") or ""
         return (
-            f"Live price shows {extra.get('priceTitle', '平台加补后')} ￥{after}{desc} vs "
-            f"{base.get('priceTitle', '优惠前')} ￥{before}. The per-SKU prices are the 优惠前 "
-            f"(pre-discount) figures; the lower subsidized price often needs a mainland ID/address "
-            f"(国补) and may not apply to an overseas buyer."
+            f"{extra.get('priceTitle', '平台加补后')} ￥{after}{desc} vs {base.get('priceTitle', '优惠前')} ￥{before}. "
+            f"Per-SKU figures are the 优惠前 price; with a mainland account + China delivery address the "
+            f"platform subsidy (百亿补贴) usually applies, so the after-subsidy price is the realistic cost. "
+            f"The government 国补 portion can be ID/quantity-limited (often ~1 per category) — on bulk, units "
+            f"beyond the limit pay the platform-subsidized price; confirm at checkout."
         )
     return None
 
