@@ -1,0 +1,71 @@
+"""Typed loader for config.toml (CLAUDE.md §6).
+
+Shared infrastructure (owned by the orchestrator). Uses stdlib ``tomllib``
+(Python 3.11+). Missing file or keys fall back to the spec's defaults, so the
+server still runs if config.toml is absent.
+"""
+
+from __future__ import annotations
+
+import tomllib
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class BrowserCfg:
+    channel: str = "chrome"
+    executable_path: str = ""     # if set, pin this exact browser binary (overrides channel)
+    user_data_dir: str = "./user_data/chrome_profile"
+    locale: str = "zh-CN"
+    timezone: str = "Asia/Shanghai"
+    headless: bool = False
+
+
+@dataclass(frozen=True)
+class PacingCfg:
+    min_delay_s: float = 2.0
+    max_delay_s: float = 6.0
+    scroll_steps: int = 4
+    max_products_per_minute: int = 6
+
+
+@dataclass(frozen=True)
+class LimitsCfg:
+    max_reviews: int = 60
+    review_pages: int = 4
+
+
+@dataclass(frozen=True)
+class OutputCfg:
+    dir: str = "./output"
+
+
+@dataclass(frozen=True)
+class Config:
+    browser: BrowserCfg
+    pacing: PacingCfg
+    limits: LimitsCfg
+    output: OutputCfg
+
+
+@lru_cache(maxsize=1)
+def load_config(path: str | Path = "config.toml") -> Config:
+    """Parse config.toml into a typed Config (cached). Unknown keys are ignored."""
+    data: dict = {}
+    p = Path(path)
+    if p.exists():
+        with p.open("rb") as f:
+            data = tomllib.load(f)
+
+    def _filter(cls, section: str) -> dict:
+        allowed = cls.__dataclass_fields__.keys()
+        return {k: v for k, v in data.get(section, {}).items() if k in allowed}
+
+    return Config(
+        browser=BrowserCfg(**_filter(BrowserCfg, "browser")),
+        pacing=PacingCfg(**_filter(PacingCfg, "pacing")),
+        limits=LimitsCfg(**_filter(LimitsCfg, "limits")),
+        output=OutputCfg(**_filter(OutputCfg, "output")),
+    )

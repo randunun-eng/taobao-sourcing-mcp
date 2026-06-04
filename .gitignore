@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual env
+.venv/
+
+# Runtime artifacts (never commit cookies/session or generated output)
+user_data/
+output/
+*.log
+
+# Reference clone of the base repo (separate upstream project)
+_base_repo/
+
+# OS
+.DS_Store
+
+# Raw page captures may embed account tokens/nick — keep only sanitized *_res.json fixtures
+tests/fixtures/**/page.html

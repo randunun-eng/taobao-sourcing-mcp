@@ -1,0 +1,22 @@
+[browser]
+channel = "chrome"            # use real Chrome, not bundled Chromium (better fingerprint)
+# Pin the exact Google Chrome binary so we never launch Comet or another Chromium.
+# Leave "" to fall back to `channel` auto-resolution.
+executable_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+user_data_dir = "./user_data/chrome_profile"
+locale = "zh-CN"
+timezone = "Asia/Shanghai"
+headless = false              # ALWAYS false. Human watches & solves captcha.
+
+[pacing]
+min_delay_s = 2.0             # random wait between actions
+max_delay_s = 6.0
+scroll_steps = 4              # incremental scroll to trigger lazy load
+max_products_per_minute = 6  # hard cap; never burst
+
+[limits]
+max_reviews = 60             # per product, paginated
+review_pages = 4
+
+[output]
+dir = "./output"
