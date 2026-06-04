@@ -138,7 +138,7 @@ async def send_reply(seller: str, message: str, confirm: bool = False) -> str:
 
     from src.browser.session import get_session
     session = get_session()
-    _, core = await _open_chat_core(session)
+    page, core = await _open_chat_core(session)
     if core is None:
         raise ProductNotFoundError("could not open the IM center (no conversations synced)")
 
@@ -157,12 +157,18 @@ async def send_reply(seller: str, message: str, confirm: bool = False) -> str:
         return (f"PREVIEW — will send to {match!r}:\n\n  {message}\n\n"
                 f"Re-call with confirm=True to send. (Nothing sent yet.)")
 
-    # confirm=True → type into the composer and click 发送
-    composer = core.locator(".biz-expression-editor, .editBox, pre.edit").first
+    # confirm=True → focus the COMPOSER editable (scoped to the input area — the same
+    # .biz-expression-editor class also renders read-only message bubbles) and type.
+    composer = core.locator(
+        ".ww_input pre.edit, .input-area pre.edit, .ww_input [contenteditable=true], "
+        ".input-area [contenteditable=true]"
+    ).first
+    if await composer.count() == 0:
+        composer = core.locator("pre.edit").last  # composer sits after the bubbles in the DOM
     try:
         await composer.click(timeout=4000)
         await human_delay(0.4, 0.9)
-        await core.keyboard.type(message, delay=40)  # human-paced keystrokes
+        await page.keyboard.type(message, delay=40)  # keyboard lives on Page, not Frame
         await human_delay(0.6, 1.2)
     except Exception as exc:
         raise ProductNotFoundError(f"could not type into the composer for {match!r}: {exc}")
@@ -172,7 +178,7 @@ async def send_reply(seller: str, message: str, confirm: bool = False) -> str:
     except Exception as exc:
         raise ProductNotFoundError(f"could not click 发送 for {match!r}: {exc}")
     await human_delay(1.5, 2.5)
-    await session.guard_captcha(await session.start())  # a send can trip a slider
+    await session.guard_captcha(page)  # a send can trip a slider
 
     # verify: the message shows up as our own latest bubble
     thread = parse_thread(await core.evaluate(THREAD_JS), 40)
