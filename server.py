@@ -15,10 +15,11 @@ from mcp.types import ToolAnnotations
 from src.browser.pacing import RateLimiter
 from src.browser.session import ensure_logged_in, get_session
 from src.errors import NotLoggedInError
+from src.extract.orders import track_orders
 from src.extract.product import parse_product
 from src.extract.reviews import parse_reviews
 from src.extract.search import parse_search
-from src.models import Product, Review, SearchResult
+from src.models import OrderStatus, Product, Review, SearchResult
 from src.output.xlsx_writer import write_xlsx
 
 mcp = FastMCP("taobao-sourcing")
@@ -94,6 +95,19 @@ async def taobao_fetch_reviews(
         most_recent_first=most_recent_first,
         max_reviews=max,
     )
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+async def taobao_track_orders(only_active: bool = True, max: int = 12) -> list[OrderStatus]:
+    """Track 已买到的宝贝: per order — status, carrier + tracking#, 取件码 (pickup OTP) + station.
+
+    Read-only daily digest to forward to your China agent for collection. Drills logistics
+    only for active orders (待发货/待收货/运输中/待取件). Example: {"only_active": true, "max": 12}
+    """
+    if await ensure_logged_in() != "logged_in":
+        raise NotLoggedInError()
+    await _rate_limiter.acquire()
+    return await track_orders(only_active=only_active, max_drill=max)
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))

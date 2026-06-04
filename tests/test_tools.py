@@ -17,6 +17,7 @@ EXPECTED = {
     "taobao_search",
     "taobao_fetch_product",
     "taobao_fetch_reviews",
+    "taobao_track_orders",
     "taobao_export_xlsx",
 }
 

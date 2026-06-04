@@ -69,3 +69,16 @@ class SearchResult(BaseModel):
     monthly_sales: int | None
     shop_name: str | None
     location: str | None
+
+
+class OrderStatus(BaseModel):
+    """One order from 已买到的宝贝 + its logistics (for the daily tracking + 取件码 digest)."""
+
+    order_id: str
+    title: str
+    status: str                          # 待发货 / 待收货 / 运输中 / 待取件 / 已签收 …
+    carrier: str | None = None
+    tracking_no: str | None = None
+    latest: str | None = None            # latest logistics line
+    pickup_code: str | None = None       # 取件码 / 取货码 (OTP to collect at a station)
+    station: str | None = None           # 驿站 / 快递柜 name
