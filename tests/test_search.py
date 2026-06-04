@@ -66,3 +66,16 @@ def test_title_not_truncated_by_promo_yen():
     r = parse_card_text("1", "直降¥100 特斯拉P100 16G显卡 ¥ 397 补贴后 700+人付款 河南 包邮 海雀显卡")
     assert "P100" in r.title
     assert r.price == 397.0
+
+
+def test_price_skips_struck_through_youhuiqian():
+    # CRITICAL: real sell price is 397; the "优惠前 ¥420" is the crossed-out price
+    r = parse_card_text("1", "特斯拉P100 16G显卡 ¥ 397 补贴后 优惠前 ¥ 420 700+人付款 河南 包邮 南京海雀显卡")
+    assert r.price == 397.0
+    assert "P100" in r.title and "优惠前" not in r.title
+
+
+def test_location_for_yishou_card():
+    # LOW: 已售-form cards must still get a location
+    r = parse_card_text("1", "显卡 ¥ 500 已售2000+ 上海 包邮 蓝天服务器")
+    assert r.location == "上海"

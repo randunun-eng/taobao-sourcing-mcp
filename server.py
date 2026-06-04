@@ -12,6 +12,7 @@ import anyio
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from src.browser.pacing import RateLimiter
 from src.browser.session import ensure_logged_in, get_session
 from src.errors import NotLoggedInError
 from src.extract.product import parse_product
@@ -21,6 +22,7 @@ from src.models import Product, Review, SearchResult
 from src.output.xlsx_writer import write_xlsx
 
 mcp = FastMCP("taobao-sourcing")
+_rate_limiter = RateLimiter()  # §7.2 hard cap — never burst past max_products_per_minute
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
@@ -54,6 +56,7 @@ async def taobao_search(keyword: str, page: int = 1, filters: dict | None = None
 
     Example: {"keyword": "tesla p100 16g", "page": 1}
     """
+    await _rate_limiter.acquire()
     return await parse_search(keyword, page_num=page, filters=filters)
 
 
@@ -65,6 +68,7 @@ async def taobao_fetch_product(product_url_or_id: str) -> Product:
     """
     if await ensure_logged_in() != "logged_in":
         raise NotLoggedInError()
+    await _rate_limiter.acquire()
     return await parse_product(product_url_or_id)
 
 
@@ -81,6 +85,7 @@ async def taobao_fetch_reviews(
     """
     if await ensure_logged_in() != "logged_in":
         raise NotLoggedInError()
+    await _rate_limiter.acquire()
     return await parse_reviews(
         product_url_or_id,
         only_with_images=only_with_images,

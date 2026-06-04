@@ -112,3 +112,25 @@ def test_variant_review_count_multigroup(tmp_path):
     assert counts["黑 S"] == 2
     assert counts["白 L"] == 1
     assert counts["黑 L"] == 0   # the bug returned non-zero / wrong here
+
+
+def test_variant_review_count_no_cross_contamination(tmp_path):
+    """A '黑' variant must NOT inherit reviews keyed '黑色升级版' (substring bug)."""
+    from src.extract.reviews import group_by_variant
+
+    variants = [
+        SkuVariant(sku_id="a", properties={"颜色": "黑"}, price=10.0, stock=1, available=True),
+        SkuVariant(sku_id="b", properties={"颜色": "黑色升级版"}, price=20.0, stock=1, available=True),
+    ]
+    reviews = [Review(rating=None, text="t", has_images=False, sku_bought="黑色升级版", date="2026-01-01")]
+    p = Product(
+        product_id="9", url="u", title="t", shop_name="s", price_range=(10.0, 20.0),
+        variants=variants, reviews=reviews, reviews_by_variant=group_by_variant(reviews),
+        scraped_at="2026-06-04T00:00:00Z",
+    )
+    wb = load_workbook(write_xlsx([p], "cc.xlsx", out_dir=str(tmp_path)))
+    wsv = wb["Variants"]
+    cc, rc = _col(wsv, "颜色"), _col(wsv, "#Reviews(variant)")
+    counts = {wsv[f"{cc}{r}"].value: wsv[f"{rc}{r}"].value for r in range(2, 4)}
+    assert counts["黑"] == 0            # must NOT count the 黑色升级版 review
+    assert counts["黑色升级版"] == 1

@@ -44,3 +44,23 @@ def test_rate_limiter_disabled():
 def test_human_delay_swaps_min_max():
     # hi < lo must be swapped, not raise (tiny values keep the test fast)
     asyncio.run(human_delay(0.002, 0.001))
+
+
+def test_config_reread_on_mtime_change(tmp_path):
+    import os
+
+    p = tmp_path / "config.toml"
+    p.write_text("[limits]\nmax_reviews = 10\n", encoding="utf-8")
+    os.utime(p, (1000, 1000))
+    assert load_config(str(p)).limits.max_reviews == 10
+    # rewrite + bump mtime → cache must miss and re-read
+    p.write_text("[limits]\nmax_reviews = 99\n", encoding="utf-8")
+    os.utime(p, (2000, 2000))
+    assert load_config(str(p)).limits.max_reviews == 99
+
+
+def test_auth_cookies_require_session_token():
+    from src.browser.session import _AUTH_COOKIE_NAMES
+
+    assert "_tb_token_" in _AUTH_COOKIE_NAMES
+    assert "tracknick" not in _AUTH_COOKIE_NAMES   # remembered-nick must NOT read as logged in

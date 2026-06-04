@@ -14,6 +14,7 @@ from src.extract.product import (
     cartesian_count,
     extract_ice_res,
     parse_product_res,
+    parse_sku_info,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -30,6 +31,29 @@ def _p100_html() -> str:
 def _p100_res() -> dict:
     """The committed, token-free sanitized fixture (CI-safe)."""
     return json.loads((FIXTURES / P100_ID / "detail_res.json").read_text(encoding="utf-8"))
+
+
+def test_specs_extracted_from_components():
+    """参数 specs come from componentsVO.BASE_PROPS — were silently always empty before."""
+    p = parse_product_res(_p100_res(), P100_ID)
+    assert p.specs.get("品牌") == "0431"
+    assert p.specs.get("浮点运算精度") == "FP32"
+    assert "生产企业" in p.specs
+
+
+def test_embedded_reviews_variant_linked():
+    """Reviews come embedded in the same HTML (componentsVO.rateVO) — no second navigation."""
+    p = parse_product_res(_p100_res(), P100_ID)
+    assert len(p.reviews) == 2
+    assert all(r.sku_bought for r in p.reviews)            # full skuInfo label, clean linkage
+    assert any(r.has_images for r in p.reviews)
+    assert p.reviews_by_variant
+
+
+def test_parse_sku_info():
+    assert parse_sku_info("颜色分类:P100 质保3年 以换代修") == "P100 质保3年 以换代修"
+    assert parse_sku_info("颜色:黑;尺寸:L") == "黑 L"
+    assert parse_sku_info("") is None
 
 
 def test_all_variants_priced():

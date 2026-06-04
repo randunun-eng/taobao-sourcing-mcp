@@ -89,5 +89,82 @@
   },
   "seller": {
     "shopName": "南京海雀显卡"
+  },
+  "componentsVO": {
+    "extensionInfoVO": {
+      "infos": [
+        {
+          "type": "BASE_PROPS",
+          "items": [
+            {
+              "title": "品牌",
+              "text": [
+                "0431"
+              ]
+            },
+            {
+              "title": "浮点运算精度",
+              "text": [
+                "FP32"
+              ]
+            },
+            {
+              "title": "生产企业",
+              "text": [
+                "英伟达"
+              ]
+            },
+            {
+              "title": "质保期",
+              "text": [
+                "无"
+              ]
+            },
+            {
+              "title": "成色",
+              "text": [
+                "全新"
+              ]
+            },
+            {
+              "title": "颜色分类",
+              "text": [
+                "P100 质保7天 走量商品 退货承担运费20元,P100 质保3年 以换代修,P100 质保7天 80个起售"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "rateVO": {
+      "totalCount": "500+",
+      "favorableRate": {
+        "rateText": "近3个月好评率高达100.0%"
+      },
+      "group": {
+        "items": [
+          {
+            "content": "速度很快，插上就能用，用着没问题",
+            "skuInfo": "颜色分类:P100 质保3年 以换代修",
+            "media": [
+              {
+                "type": "image"
+              }
+            ],
+            "dateTime": "2026-05-26"
+          },
+          {
+            "content": "用的ga-6pxsvl技嘉主板，peux-os。ollama和comfyui都ok，",
+            "skuInfo": "颜色分类:P100 质保7天 走量商品 退货承担运费20元",
+            "media": [
+              {
+                "type": "image"
+              }
+            ],
+            "dateTime": "2026-03-19"
+          }
+        ]
+      }
+    }
   }
 }

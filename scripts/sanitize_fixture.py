@@ -52,6 +52,28 @@ clean = {
     "seller": {"shopName": seller.get("shopName")},
 }
 
+# componentsVO: 参数 specs (BASE_PROPS) + embedded preview reviews — strip reviewer identity.
+_cv = res.get("componentsVO", {}) or {}
+_infos = (_cv.get("extensionInfoVO", {}) or {}).get("infos", []) or []
+_rate = _cv.get("rateVO", {}) or {}
+_rate_items = ((_rate.get("group", {}) or {}).get("items", []) or [])
+clean["componentsVO"] = {
+    "extensionInfoVO": {"infos": [
+        {"type": b.get("type"), "items": [{"title": it.get("title"), "text": it.get("text")} for it in b.get("items", [])]}
+        for b in _infos if isinstance(b, dict) and b.get("type") == "BASE_PROPS"
+    ]},
+    "rateVO": {
+        "totalCount": _rate.get("totalCount"),
+        "favorableRate": _rate.get("favorableRate"),
+        "group": {"items": [
+            {"content": it.get("content"), "skuInfo": it.get("skuInfo"),
+             "media": [{"type": (m or {}).get("type")} for m in (it.get("media") or [])],
+             "dateTime": it.get("dateTime")}
+            for it in _rate_items if isinstance(it, dict)
+        ]},
+    },
+}
+
 out = d / "detail_res.json"
 out.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
 

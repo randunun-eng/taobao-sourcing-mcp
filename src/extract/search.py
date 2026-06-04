@@ -20,6 +20,9 @@ _SALES_RE2 = re.compile(r"(?:已售|月销|成交)\s*([\d.]+万?)")   # 已售20
 _SHIP_TOKENS = ("包邮", "公益宝贝", "退货宝", "48小时内发", "24小时内发", "极速退款", "补贴后", "优惠前", "包退")
 _PROMO_RE = re.compile(r"满\d+减\d+|立减|直降|券|补贴|赠")
 _CJK_TOKEN = re.compile(r"[一-龥]{2,}")
+# A ¥-amount immediately preceded by one of these is a struck-through "优惠前" price or a
+# promo discount (直降¥100 / 满减), NOT the sell price.
+_SKIP_BEFORE_PRICE = ("优惠前", "直降", "立减", "减", "省", "券", "返")
 
 
 def _to_count(s: str) -> int | None:
@@ -36,30 +39,39 @@ def _to_count(s: str) -> int | None:
 
 def parse_card_text(product_id: str, text: str) -> SearchResult:
     """Parse one result card's flattened text into a SearchResult (pure)."""
-    # Price = the LAST ¥-amount (the real price sits after the title/promo); strip commas.
+    # Price = the FIRST ¥-amount that is not a struck-through "优惠前" price or a promo discount.
     matches = list(_PRICE_RE.finditer(text))
     price = None
     price_pos = None
-    if matches:
-        m = matches[-1]
+    for m in matches:
+        before = text[max(0, m.start() - 6):m.start()]
+        if any(tok in before for tok in _SKIP_BEFORE_PRICE):
+            continue
         try:
             price = float(m.group(1).replace(",", ""))
+            price_pos = m.start()
+        except ValueError:
+            continue
+        break
+    if price is None and matches:  # everything looked like 优惠前/promo — fall back to the first ¥
+        try:
+            price = float(matches[0].group(1).replace(",", ""))
+            price_pos = matches[0].start()
         except ValueError:
             price = None
-        price_pos = m.start()
 
     title = (text[:price_pos] if price_pos is not None else text.split("¥", 1)[0]).strip()
 
     sm = _SALES_RE.search(text)
     sm2 = _SALES_RE2.search(text)
-    sales_grp = sm.group(1) if sm else (sm2.group(1) if sm2 else None)
-    monthly_sales = _to_count(sales_grp) if sales_grp else None
+    sale_m = sm or sm2
+    monthly_sales = _to_count(sale_m.group(1)) if sale_m else None
 
     # Location = leading CJK tokens right after the sales marker, excluding ship/promo.
     location = None
-    if sm:
+    if sale_m:
         loc_toks: list[str] = []
-        for tok in text[sm.end():].split():
+        for tok in text[sale_m.end():].split():
             if _CJK_TOKEN.fullmatch(tok) and tok not in _SHIP_TOKENS and not _PROMO_RE.search(tok):
                 loc_toks.append(tok)
                 if len(loc_toks) >= 2:

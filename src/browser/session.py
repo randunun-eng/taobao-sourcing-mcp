@@ -19,7 +19,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 from src.config import Config, load_config
-from src.errors import CaptchaError
+from src.errors import BrowserLaunchError, CaptchaError
 from src.log import get_logger
 
 # Masks the one fingerprint that bundled automation leaks. Real Chrome +
@@ -31,8 +31,9 @@ _STEALTH_JS = "Object.defineProperty(navigator, 'webdriver', {get: () => false})
 _BLOCK_URL_HINTS = ("login.taobao.com", "login.tmall.com", "//login.", "punish", "_____tmd_____", "sec.taobao.com")
 _SLIDER_SELECTORS = ("#nc_1_n1z", ".nc-container", ".nc_iconfont", "iframe[src*='punish']", "iframe[src*='baxia']")
 
-# Cookies that are only set once a user is actually logged in (the nick cookies).
-_LOGIN_COOKIE_NAMES = ("tracknick", "dnk", "lgc")
+# Real session-token cookies — present only while logged in and CLEARED on logout
+# (unlike the remembered-nick cookies tracknick/lgc, which persist and falsely read as logged in).
+_AUTH_COOKIE_NAMES = ("_tb_token_", "cookie2", "unb", "sgcookie")
 
 
 class BrowserSession:
@@ -78,7 +79,7 @@ class BrowserSession:
             self.context = await self.playwright.chromium.launch_persistent_context(**launch_kwargs)
         except Exception as exc:  # channel="chrome" needs Google Chrome installed
             await self._stop_playwright()
-            raise RuntimeError(
+            raise BrowserLaunchError(
                 f"Could not launch Chrome (channel={b.channel!r}): {exc}. "
                 "Install Google Chrome, or run `.venv/bin/python -m playwright install chrome`. "
                 "To fall back to bundled Chromium, set channel = \"\" in config.toml."
@@ -122,7 +123,7 @@ class BrowserSession:
         except Exception:
             return False
         names = {c.get("name") for c in cookies}
-        return any(name in names for name in _LOGIN_COOKIE_NAMES)
+        return any(name in names for name in _AUTH_COOKIE_NAMES)
 
     async def ensure_logged_in(self, timeout_s: int = 180, poll_s: float = 3.0) -> str:
         """Ensure a logged-in session, actively polling for the human's QR scan.

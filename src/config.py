@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 
@@ -50,11 +49,19 @@ class Config:
     output: OutputCfg
 
 
-@lru_cache(maxsize=1)
+_CACHE: dict = {}
+
+
 def load_config(path: str | Path = "config.toml") -> Config:
-    """Parse config.toml into a typed Config (cached). Unknown keys are ignored."""
-    data: dict = {}
+    """Parse config.toml into a typed Config. Cached, but RE-READ when the file's mtime
+    changes, so a long-running server picks up runtime edits. Unknown keys are ignored."""
     p = Path(path)
+    mtime = p.stat().st_mtime if p.exists() else 0.0
+    key = (str(p), mtime)
+    if key in _CACHE:
+        return _CACHE[key]
+
+    data: dict = {}
     if p.exists():
         with p.open("rb") as f:
             data = tomllib.load(f)
@@ -63,9 +70,12 @@ def load_config(path: str | Path = "config.toml") -> Config:
         allowed = cls.__dataclass_fields__.keys()
         return {k: v for k, v in data.get(section, {}).items() if k in allowed}
 
-    return Config(
+    cfg = Config(
         browser=BrowserCfg(**_filter(BrowserCfg, "browser")),
         pacing=PacingCfg(**_filter(PacingCfg, "pacing")),
         limits=LimitsCfg(**_filter(LimitsCfg, "limits")),
         output=OutputCfg(**_filter(OutputCfg, "output")),
     )
+    _CACHE.clear()      # keep only the latest (path, mtime)
+    _CACHE[key] = cfg
+    return cfg

@@ -41,10 +41,15 @@ def test_search_schema_requires_keyword():
 
 
 def test_actionable_error_messages():
+    from src.errors import BrowserLaunchError, SourcingError
+
     assert "QR" in str(NotLoggedInError())
     assert "slider" in str(CaptchaError())
     assert "valid" in str(ProductNotFoundError("123")).lower()
     assert "incomplete" in str(SkuIncompleteError(12, 11)).lower()
+    # BrowserLaunchError is part of the taxonomy (tools must not leak a raw RuntimeError)
+    assert issubclass(BrowserLaunchError, SourcingError)
+    assert "Chrome" in str(BrowserLaunchError("Could not launch Chrome: boom"))
 
 
 def test_export_tool_callable():

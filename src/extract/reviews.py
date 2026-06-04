@@ -41,7 +41,8 @@ def parse_meta(meta: str) -> tuple[str | None, str | None]:
     sku = None
     m2 = _BOUGHT_RE.search(meta or "")
     if m2:
-        sku = re.split(r"\s*追评|\s{2,}", m2.group(1).strip())[0].strip()  # M3: drop trailing 追评 text
+        # drop only a trailing "追评:…" segment; keep labels with internal spaces intact
+        sku = re.sub(r"\s*追评[:：].*$", "", m2.group(1).strip()).strip()
     return date, sku
 
 
@@ -74,16 +75,16 @@ def dedupe(reviews: list[Review]) -> list[Review]:
     the has_images flag so the image-bearing copy's photos are never lost (H4).
     """
     index: dict[tuple, Review] = {}
-    out: list[Review] = []
+    order: list[tuple] = []
     for rv in reviews:
         key = (rv.text, rv.date, rv.sku_bought)
         if key in index:
             if rv.has_images and not index[key].has_images:
-                index[key].has_images = True
+                index[key] = index[key].model_copy(update={"has_images": True})  # no in-place mutation
             continue
         index[key] = rv
-        out.append(rv)
-    return out
+        order.append(key)
+    return [index[k] for k in order]
 
 
 def apply_filters(
@@ -164,8 +165,10 @@ async def parse_reviews(
             pass
         await human_delay(1.0, 1.8)
         raw = await page.evaluate(_EXTRACT_JS)
-        # H3: each review renders twice (preview + drawer), so cap on UNIQUE count, not raw rows.
-        if len(dedupe(dicts_to_reviews(raw))) >= cap:
+        # cap on UNIQUE GENUINE reviews (each renders twice; boilerplate is filtered out later).
+        unique = dedupe(dicts_to_reviews(raw))
+        genuine = unique if include_default else [r for r in unique if not is_default_review(r.text)]
+        if len(genuine) >= cap:
             break
         stale = stale + 1 if len(raw) == last else 0
         if stale >= 3:

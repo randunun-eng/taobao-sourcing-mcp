@@ -33,6 +33,13 @@ class CaptchaError(SourcingError):
         super().__init__(message)
 
 
+class BrowserLaunchError(SourcingError):
+    """Raised when the headed Chrome browser cannot be launched."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class ProductNotFoundError(SourcingError):
     def __init__(self, identifier: str | None = None) -> None:
         head = (

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from src.errors import ProductNotFoundError, SelectorDriftError, SkuIncompleteError
 from src.extract.selectors import ICE_ANCHORS, RES_SKU_BASE_KEY
-from src.models import Product, SkuVariant
+from src.models import Product, Review, SkuVariant
 
 # ---- embedded-data extraction ---------------------------------------------
 
@@ -200,8 +200,77 @@ def parse_product_html(html: str, product_id: str, url: str = "") -> Product:
     return parse_product_res(extract_ice_res(html), product_id, url)
 
 
+def parse_sku_info(sku_info: str) -> str | None:
+    """'颜色分类:P100 质保3年 以换代修' → 'P100 质保3年 以换代修'; '颜色:黑;尺寸:L' → '黑 L'."""
+    if not sku_info:
+        return None
+    values = []
+    for pair in str(sku_info).split(";"):
+        pair = pair.strip()
+        if not pair:
+            continue
+        values.append(pair.split(":", 1)[-1].strip() if ":" in pair else pair)
+    return " ".join(v for v in values if v) or None
+
+
+def extract_specs(res: dict) -> dict[str, str]:
+    """参数 table from componentsVO.extensionInfoVO.infos (type BASE_PROPS) → {title: value}."""
+    specs: dict[str, str] = {}
+    infos = ((res.get("componentsVO", {}) or {}).get("extensionInfoVO", {}) or {}).get("infos", []) or []
+    for block in infos:
+        if not isinstance(block, dict) or block.get("type") != "BASE_PROPS":
+            continue
+        for item in block.get("items", []) or []:
+            title, text = item.get("title"), item.get("text")
+            if not title:
+                continue
+            value = " / ".join(text) if isinstance(text, list) else str(text or "")
+            if value:
+                specs[str(title)] = value
+    return specs
+
+
+def extract_embedded_reviews(res: dict) -> list[Review]:
+    """Reviews already embedded in componentsVO.rateVO.group.items (no extra navigation).
+
+    Each item carries content + skuInfo ('颜色分类:<label>', the FULL variant string,
+    so linkage is clean) + media (presence → has_images) + dateTime.
+    """
+    items = (((res.get("componentsVO", {}) or {}).get("rateVO", {}) or {})
+             .get("group", {}) or {}).get("items", []) or []
+    reviews: list[Review] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        text = (it.get("content") or it.get("feedback") or "").strip()
+        if not text:
+            continue
+        reviews.append(Review(
+            rating=None,
+            text=text,
+            has_images=bool(it.get("media") or it.get("pics") or it.get("photos")),
+            sku_bought=parse_sku_info(it.get("skuInfo") or it.get("auctionSku") or ""),
+            date=it.get("dateTime") or it.get("feedbackDate"),
+        ))
+    return reviews
+
+
+def embedded_review_total(res: dict):
+    """The listing's stated total review count + favorable-rate text (or (None, None))."""
+    rate = (res.get("componentsVO", {}) or {}).get("rateVO", {}) or {}
+    fav = rate.get("favorableRate")
+    fav_text = fav.get("rateText") if isinstance(fav, dict) else fav
+    return rate.get("totalCount"), fav_text
+
+
 def parse_product_res(res: dict, product_id: str, url: str = "") -> Product:
-    """Build a Product from an already-extracted ICE ``res`` dict (test/fixture-friendly)."""
+    """Build a Product from an already-extracted ICE ``res`` dict (test/fixture-friendly).
+
+    Reads variants (skuBase↔sku2info), 参数 specs (componentsVO BASE_PROPS), and the
+    preview reviews embedded in componentsVO.rateVO — all from the one HTML, no extra nav.
+    """
+    from src.extract.reviews import group_by_variant
+
     sku_base = res.get("skuBase", {}) or {}
     sku2info = (res.get("skuCore", {}) or {}).get("sku2info", {}) or {}
     item = res.get("item", {}) or {}
@@ -210,6 +279,7 @@ def parse_product_res(res: dict, product_id: str, url: str = "") -> Product:
     variants = build_variants(sku_base, sku2info)
     priced = [v.price for v in variants if v.price is not None]
     price_range = (min(priced), max(priced)) if priced else None
+    reviews = extract_embedded_reviews(res)
 
     return Product(
         product_id=str(product_id),
@@ -218,10 +288,10 @@ def parse_product_res(res: dict, product_id: str, url: str = "") -> Product:
         shop_name=seller.get("shopName") or seller.get("sellerNick") or "",
         price_range=price_range,
         variants=variants,
-        specs={},  # 参数 table not in this blob; DOM/extra fetch is a Phase 6 enhancement
+        specs=extract_specs(res),
         image_urls=list(item.get("images", []) or []),
-        reviews=[],
-        reviews_by_variant={},
+        reviews=reviews,
+        reviews_by_variant=group_by_variant(reviews),
         qa=[],
         scraped_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -243,12 +313,14 @@ def _to_product_id(product_url_or_id: str) -> str:
 
 
 async def parse_product(
-    product_url_or_id: str, with_reviews: bool = True, review_max: int | None = None
+    product_url_or_id: str, deep_reviews: bool = False, review_max: int | None = None
 ) -> Product:
     """Live: navigate to the product (logged in, paced, captcha-guarded) and parse it.
 
-    By default also attaches variant-linked reviews (with_reviews=True) so the
-    returned Product is complete; reviews are best-effort and never fail the fetch.
+    Variants, 参数 specs, and the preview reviews all come from the embedded HTML in a
+    SINGLE navigation — no redundant round-trip (fixes the old double-nav). Pass
+    deep_reviews=True to additionally crawl the full review drawer; that path lets a
+    CaptchaError propagate so the human is never left with a hidden verification wall.
     """
     from src.browser.pacing import human_delay, human_scroll
     from src.browser.session import get_session
@@ -261,16 +333,14 @@ async def parse_product(
     await session.guard_captcha(page)
     await human_scroll(page, 3)
     await human_delay(1.5, 3.0)
-    html = await page.content()
-    product = parse_product_html(html, pid, url)
+    product = parse_product_html(await page.content(), pid, url)
 
-    if with_reviews:  # C2: attach reviews + reviews_by_variant to the product path
+    if deep_reviews:  # opt-in deep crawl; CaptchaError/SelectorDriftError intentionally propagate
         from src.extract.reviews import group_by_variant, parse_reviews
-        try:
-            reviews = await parse_reviews(pid, max_reviews=review_max)
+
+        reviews = await parse_reviews(pid, max_reviews=review_max)
+        if reviews:
             product.reviews = reviews
             product.reviews_by_variant = group_by_variant(reviews)
-        except Exception:
-            pass  # best-effort — never fail the product fetch because reviews hiccuped
 
     return product

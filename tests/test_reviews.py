@@ -101,3 +101,23 @@ def test_meta_strips_trailing_zhuiping():
     # M3: 追评 text must not pollute sku_bought
     date, sku = parse_meta("2026-05-26已购：P100 质保3年 追评：又买了一片")
     assert sku == "P100 质保3年"
+
+
+def test_meta_double_space_not_truncated():
+    # a label with an internal double space must NOT be truncated to the first token
+    _, sku = parse_meta("2026-05-26已购：P100  16G 走量")
+    assert sku and sku.startswith("P100") and "走量" in sku
+
+
+def test_meta_zhuiping_word_in_label_not_blanked():
+    # a label literally containing 追评 (no colon) must not be blanked
+    _, sku = parse_meta("2026-01-01已购：追评专享套餐")
+    assert sku == "追评专享套餐"
+
+
+def test_dedupe_does_not_mutate_input():
+    a = Review(rating=None, text="x", has_images=False, sku_bought="A", date="2026-01-01")
+    b = Review(rating=None, text="x", has_images=True, sku_bought="A", date="2026-01-01")
+    out = dedupe([a, b])
+    assert a.has_images is False        # caller's object untouched
+    assert out[0].has_images is True    # merged copy carries the image flag
