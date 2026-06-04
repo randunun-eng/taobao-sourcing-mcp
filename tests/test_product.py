@@ -14,9 +14,11 @@ from src.extract.product import (
     cartesian_count,
     extract_ice_res,
     extract_subsidy_caveat,
+    fill_subsidy_prices,
     parse_product_res,
     parse_sku_info,
 )
+from src.models import Product, SkuVariant
 
 FIXTURES = Path(__file__).parent / "fixtures"
 P100_ID = "736546459871"
@@ -69,6 +71,20 @@ def test_subsidy_caveat_none_when_no_gap():
     assert extract_subsidy_caveat(
         {"componentsVO": {"priceVO": {"price": {"priceText": "100"}, "extraPrice": {"priceText": "100"}}}}
     ) is None
+
+
+def test_deep_price_skips_large_products():
+    """deep_price must skip (no clicking) when a product has too many SKUs — returns before touching the page."""
+    import asyncio
+
+    variants = [
+        SkuVariant(sku_id=str(i), properties={"颜色": f"c{i}"}, price=10.0, stock=1, available=True)
+        for i in range(30)
+    ]
+    p = Product(product_id="1", url="u", title="t", shop_name="s", price_range=(10.0, 10.0),
+                variants=variants, scraped_at="2026-06-04T00:00:00Z")
+    asyncio.run(fill_subsidy_prices(None, p, max_skus=24))  # page=None proves it never interacts
+    assert all(v.price == 10.0 for v in p.variants)
 
 
 def test_all_variants_priced():

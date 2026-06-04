@@ -336,15 +336,72 @@ def _to_product_id(product_url_or_id: str) -> str:
     raise ProductNotFoundError(product_url_or_id)
 
 
+async def fill_subsidy_prices(page, product, max_skus: int = 24) -> None:
+    """deep_price: click each variant to read its live 平台加补后 (after-subsidy) price.
+
+    Replaces SkuVariant.price with the displayed subsidized price — the realistic cost
+    for a mainland account + China address. Skipped when a product has > max_skus variants
+    (too many clicks → slow + flag risk). Multi-group: selects one value per group; uses
+    exact text match to hit the real chip (not the spec table).
+    """
+    from src.browser.pacing import human_delay
+    from src.extract.selectors import SUBSIDY_PRICE_JS
+
+    variants = product.variants
+    if not variants or len(variants) > max_skus:
+        return
+
+    got_any = False
+    for v in variants:
+        ok = True
+        for value in v.properties.values():
+            try:
+                loc = page.get_by_text(value, exact=True).first
+                if await loc.count() == 0:
+                    loc = page.get_by_text(value[:14], exact=False).first  # 推荐-badge fallback
+                await loc.scroll_into_view_if_needed(timeout=3000)
+                await loc.click(timeout=4000)
+            except Exception:
+                ok = False
+                break
+            await human_delay(0.6, 1.2)
+        if not ok:
+            continue
+        await human_delay(0.8, 1.4)
+        try:
+            shown = await page.evaluate(SUBSIDY_PRICE_JS)
+        except Exception:
+            shown = None
+        if shown:
+            try:
+                v.price = float(shown)
+                got_any = True
+            except (TypeError, ValueError):
+                pass
+
+    if got_any:
+        priced = [x.price for x in variants if x.price is not None]
+        if priced:
+            product.price_range = (min(priced), max(priced))
+        product.subsidy_caveat = (
+            "Per-SKU prices are the live 平台加补后 (after-subsidy) figures. The government 国补 "
+            "portion can be ID/quantity-limited (often ~1 per category), so on bulk the units "
+            "beyond the limit pay the platform-subsidized price."
+        )
+
+
 async def parse_product(
-    product_url_or_id: str, deep_reviews: bool = False, review_max: int | None = None
+    product_url_or_id: str,
+    deep_reviews: bool = False,
+    deep_price: bool = False,
+    review_max: int | None = None,
 ) -> Product:
     """Live: navigate to the product (logged in, paced, captcha-guarded) and parse it.
 
-    Variants, 参数 specs, and the preview reviews all come from the embedded HTML in a
-    SINGLE navigation — no redundant round-trip (fixes the old double-nav). Pass
-    deep_reviews=True to additionally crawl the full review drawer; that path lets a
-    CaptchaError propagate so the human is never left with a hidden verification wall.
+    Variants, 参数 specs, and preview reviews all come from the embedded HTML in a SINGLE
+    navigation. deep_price=True additionally clicks each variant to read its live
+    平台加补后 (after-subsidy) price. deep_reviews=True crawls the full review drawer
+    (re-navigates). Both opt-in; CaptchaError propagates so a wall is never hidden.
     """
     from src.browser.pacing import human_delay, human_scroll
     from src.browser.session import get_session
@@ -359,7 +416,10 @@ async def parse_product(
     await human_delay(1.5, 3.0)
     product = parse_product_html(await page.content(), pid, url)
 
-    if deep_reviews:  # opt-in deep crawl; CaptchaError/SelectorDriftError intentionally propagate
+    if deep_price:  # click each variant for its live after-subsidy price (before any re-nav)
+        await fill_subsidy_prices(page, product)
+
+    if deep_reviews:  # opt-in deep crawl; re-navigates. CaptchaError/SelectorDriftError propagate
         from src.extract.reviews import group_by_variant, parse_reviews
 
         reviews = await parse_reviews(pid, max_reviews=review_max)

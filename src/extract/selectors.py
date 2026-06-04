@@ -82,6 +82,20 @@ DEFAULT_REVIEW_MARKERS = (
 )
 
 
+# --- deep_price: read the live 平台加补后 (after-subsidy) price after selecting a variant ---
+SUBSIDY_PRICE_JS = r"""() => {
+  const all=[...document.querySelectorAll('*')];
+  let best=null, bestLen=999;
+  for (const e of all) {
+    const t=(e.innerText||'').replace(/\s+/g,'');
+    if (t.includes('平台加补后') && /\d/.test(t) && t.length<40 && t.length<bestLen) { best=t; bestLen=t.length; }
+  }
+  if (!best) return null;
+  const m = best.match(/平台加补后[¥￥]?([\d.]+)/);
+  return m ? m[1] : null;
+}"""
+
+
 def require(value, step: str, selector: str | None = None):
     """Return value, or raise SelectorDriftError if it's falsy/empty.
 

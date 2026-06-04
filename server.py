@@ -61,15 +61,17 @@ async def taobao_search(keyword: str, page: int = 1, filters: dict | None = None
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
-async def taobao_fetch_product(product_url_or_id: str) -> Product:
+async def taobao_fetch_product(product_url_or_id: str, deep_price: bool = False) -> Product:
     """Fetch one product: title, shop, EVERY SKU variant + its price/stock, specs, images.
 
-    Auto-ensures login first. Example: {"product_url_or_id": "736546459871"}
+    Auto-ensures login first. deep_price=True clicks each variant to read its live
+    平台加补后 (after-subsidy) price — slower, best for small-SKU items (skipped if >24 SKUs).
+    Example: {"product_url_or_id": "736546459871", "deep_price": true}
     """
     if await ensure_logged_in() != "logged_in":
         raise NotLoggedInError()
     await _rate_limiter.acquire()
-    return await parse_product(product_url_or_id)
+    return await parse_product(product_url_or_id, deep_price=deep_price)
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
