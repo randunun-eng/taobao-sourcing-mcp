@@ -13,6 +13,7 @@ from src.extract.product import (
     build_variants,
     cartesian_count,
     extract_ice_res,
+    extract_subsidy_caveat,
     parse_product_res,
     parse_sku_info,
 )
@@ -54,6 +55,20 @@ def test_parse_sku_info():
     assert parse_sku_info("颜色分类:P100 质保3年 以换代修") == "P100 质保3年 以换代修"
     assert parse_sku_info("颜色:黑;尺寸:L") == "黑 L"
     assert parse_sku_info("") is None
+
+
+def test_subsidy_caveat_flagged():
+    """The after-subsidy (平台加补后) price differs from 优惠前 → caveat surfaced."""
+    p = parse_product_res(_p100_res(), P100_ID)
+    assert p.subsidy_caveat is not None
+    assert "397" in p.subsidy_caveat and "400" in p.subsidy_caveat   # after-subsidy vs pre-discount
+
+
+def test_subsidy_caveat_none_when_no_gap():
+    assert extract_subsidy_caveat({}) is None
+    assert extract_subsidy_caveat(
+        {"componentsVO": {"priceVO": {"price": {"priceText": "100"}, "extraPrice": {"priceText": "100"}}}}
+    ) is None
 
 
 def test_all_variants_priced():

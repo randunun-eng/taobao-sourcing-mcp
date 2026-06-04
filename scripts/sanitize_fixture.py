@@ -58,6 +58,7 @@ _infos = (_cv.get("extensionInfoVO", {}) or {}).get("infos", []) or []
 _rate = _cv.get("rateVO", {}) or {}
 _rate_items = ((_rate.get("group", {}) or {}).get("items", []) or [])
 clean["componentsVO"] = {
+    "priceVO": _cv.get("priceVO", {}),   # 优惠前 + 平台加补后 headline prices (public, no tokens)
     "extensionInfoVO": {"infos": [
         {"type": b.get("type"), "items": [{"title": it.get("title"), "text": it.get("text")} for it in b.get("items", [])]}
         for b in _infos if isinstance(b, dict) and b.get("type") == "BASE_PROPS"

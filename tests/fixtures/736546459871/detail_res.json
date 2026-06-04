@@ -91,6 +91,32 @@
     "shopName": "南京海雀显卡"
   },
   "componentsVO": {
+    "priceVO": {
+      "extraPrice": {
+        "priceUnit": "￥",
+        "priceColor": "#FFFFFF",
+        "priceTitle": "平台加补后",
+        "priceColorNew": "#FF5000",
+        "priceBgColor": "#FF5000",
+        "priceTitleColor": "#FFFFFF",
+        "priceText": "397",
+        "priceDesc": "起",
+        "priceMoney": "39700",
+        "hiddenPrice": "false"
+      },
+      "price": {
+        "priceUnit": "￥",
+        "priceColor": "#FF4F00",
+        "priceTitle": "优惠前",
+        "priceColorNew": "#7A7A7A",
+        "priceTitleColor": "#FF4F00",
+        "priceText": "400",
+        "priceDesc": "起",
+        "priceMoney": "40000",
+        "hiddenPrice": "false"
+      },
+      "isNewStyle": "true"
+    },
     "extensionInfoVO": {
       "infos": [
         {

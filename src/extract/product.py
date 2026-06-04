@@ -263,6 +263,28 @@ def embedded_review_total(res: dict):
     return rate.get("totalCount"), fav_text
 
 
+def extract_subsidy_caveat(res: dict) -> str | None:
+    """Flag the gap when priceVO shows a 平台加补后 (after-subsidy) price below 优惠前.
+
+    Per-SKU prices come from sku2info (the 优惠前 / pre-discount figure). The subsidized
+    price is computed per selection and usually needs a mainland ID/address (国补), so it
+    may not apply to an overseas buyer — surface it rather than silently mislead.
+    """
+    pv = (res.get("componentsVO", {}) or {}).get("priceVO", {}) or {}
+    extra = pv.get("extraPrice") or {}
+    base = pv.get("price") or {}
+    after, before = extra.get("priceText"), base.get("priceText")
+    if after and before and str(after) != str(before):
+        desc = extra.get("priceDesc", "") or ""
+        return (
+            f"Live price shows {extra.get('priceTitle', '平台加补后')} ￥{after}{desc} vs "
+            f"{base.get('priceTitle', '优惠前')} ￥{before}. The per-SKU prices are the 优惠前 "
+            f"(pre-discount) figures; the lower subsidized price often needs a mainland ID/address "
+            f"(国补) and may not apply to an overseas buyer."
+        )
+    return None
+
+
 def parse_product_res(res: dict, product_id: str, url: str = "") -> Product:
     """Build a Product from an already-extracted ICE ``res`` dict (test/fixture-friendly).
 
@@ -294,6 +316,7 @@ def parse_product_res(res: dict, product_id: str, url: str = "") -> Product:
         reviews_by_variant=group_by_variant(reviews),
         qa=[],
         scraped_at=datetime.now(timezone.utc).isoformat(),
+        subsidy_caveat=extract_subsidy_caveat(res),
     )
 
 

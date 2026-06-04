@@ -56,6 +56,7 @@ class Product(BaseModel):
     reviews_by_variant: dict[str, list[Review]] = Field(default_factory=dict)  # sku label -> reviews
     qa: list[QAPair] = Field(default_factory=list)
     scraped_at: str
+    subsidy_caveat: str | None = None   # set when the live "平台加补后" price differs from 优惠前
 
 
 class SearchResult(BaseModel):

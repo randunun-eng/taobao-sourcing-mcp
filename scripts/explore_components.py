@@ -29,6 +29,17 @@ for i in (infos if isinstance(infos, list) else []):
     print("rateVO.totalCount / favorableRate:", res.get("componentsVO", {}).get("rateVO", {}).get("totalCount"),
           res.get("componentsVO", {}).get("rateVO", {}).get("favorableRate"))
 
+print("\n--- priceVO ---")
+print(json.dumps(cv.get("priceVO", {}), ensure_ascii=False)[:600])
+print("--- umpPriceLogVO ---")
+print(json.dumps(cv.get("umpPriceLogVO", {}), ensure_ascii=False)[:400])
+print("--- one full sku2info price entry ---")
+_s2i = (res.get("skuCore", {}) or {}).get("sku2info", {}) or {}
+for _sid, _info in _s2i.items():
+    if _sid != "0":
+        print(_sid, json.dumps(_info.get("price", {}), ensure_ascii=False))
+        break
+
 rate = cv.get("rateVO", {}) or {}
 print("\nrateVO keys:", list(rate.keys()))
 grp = rate.get("group", {}) or {}

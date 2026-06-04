@@ -83,6 +83,7 @@ def test_markdown_has_prices():
     assert "特斯拉P100" in md or "P100" in md
     assert "¥420" in md and "¥450" in md
     assert "Reviews:" in md
+    assert "Subsidy" in md   # the 平台加补后 vs 优惠前 caveat is surfaced
 
 
 def test_variant_review_count_multigroup(tmp_path):
