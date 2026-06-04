@@ -19,6 +19,7 @@ EXPECTED = {
     "taobao_fetch_reviews",
     "taobao_track_orders",
     "taobao_export_xlsx",
+    "taobao_add_to_cart",
 }
 
 
@@ -26,7 +27,7 @@ def _tools():
     return asyncio.run(server.mcp.list_tools())
 
 
-def test_six_tools_listed():
+def test_all_tools_listed():
     assert {t.name for t in _tools()} == EXPECTED
 
 

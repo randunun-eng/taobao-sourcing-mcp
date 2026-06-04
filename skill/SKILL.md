@@ -4,9 +4,11 @@ description: >-
   Source products on Taobao/Tmall without manually opening, translating, or
   tabulating anything. Use when the user gives a keyword or pastes Taobao/Tmall
   links and wants a translated, deal-ranked comparison (every SKU variant priced,
-  recent reviews summarized) and/or a drafted Chinese supplier message. Drives the
-  taobao-sourcing MCP server. The human keeps all judgment: they pick from search
-  results, they decide what to buy, and they send every supplier message manually.
+  recent reviews summarized), a drafted Chinese supplier message, chosen items
+  staged into the cart for their China agent to check out, and/or a daily
+  order-tracking + 取件码 (pickup-code) digest. Drives the taobao-sourcing MCP
+  server. The human keeps all judgment: they pick from search results, they decide
+  what to buy, and they confirm every supplier message and every cart add.
 ---
 
 # Taobao Sourcing Playbook
@@ -24,6 +26,11 @@ speed.
 - **Never auto-buy. Supplier messages are confirm-then-send.** You draft, show the
   human the exact message, and send via Wangwang (旺旺) ONLY after their per-message
   OK — never blind auto-send, always human-paced. Never buy / checkout / pay.
+- **The cart is the only write you make to an order, and it's gated.** You may add a
+  chosen item+variant to the cart (`taobao_add_to_cart`, `confirm=True`) ONLY after
+  the human OKs that exact item — preview first (`confirm=False`). The cart is the
+  hand-off to their China agent, who selects the forwarder address and pays. You
+  NEVER check out, pay, or pick a shipping address. Order tracking is read-only.
 - **Captcha = hand off.** If a tool reports `human_action_required` / raises
   `CaptchaError`, tell the human to solve the slider in the visible Chrome window,
   then retry. Never attempt to solve it.
@@ -85,7 +92,28 @@ speed.
 - **Form-factor traps** (e.g. SXM2 vs PCIe; voltage/plug; "needs a fan" for passive
   cards) — call these out before the human commits.
 
-### 6. Supplier message (confirm-then-send)
+### 6. Stage chosen items into the cart (the agent's hand-off — gated)
+- Once the human decides to buy something, **preview first**:
+  `taobao_add_to_cart(url_or_id, options=[…], qty=…)` with `confirm` left False →
+  it echoes back the item + variant + qty without writing anything.
+- `options` is **one value per variant group** (e.g. `["P100 质保3年 以换代修"]`, or
+  `["黑色","L"]`). If you omit it on a multi-variant item the tool lists the available
+  choices — relay those and let the human pick the exact tier.
+- **Only after the human OKs that exact line**, call again with `confirm=True` to add it.
+- The cart is where your job ends: the human tags each item **sea or air** and their
+  **China agent** checks out (picks the forwarder address) and pays. **You never check
+  out, pay, or choose an address.** Adding is reversible; the human can remove items.
+
+### 7. Track orders + 取件码 pickup digest (read-only, daily)
+- Call `taobao_track_orders(only_active=True, max=…)` → for each active order it returns
+  status, carrier + tracking#, and (when a parcel is at a 菜鸟驿站/快递柜) the **取件码**
+  (pickup OTP) + station.
+- Render it as a table, and produce a short **Chinese message the human forwards to their
+  agent** listing each parcel's tracking# + 取件码 + station for physical collection.
+- This is **read-only** — no writes, no purchasing. If a code/station comes back 未知 for
+  an order, say so and offer to re-run (the logistics page throttles rapid bursts).
+
+### 8. Supplier message (confirm-then-send)
 - When the human wants to contact a seller, use `skill/supplier_templates.md`.
 - Fill the variables, write the message **in Chinese**, show it to the human, and
   **send it via Wangwang ONLY after the human confirms that exact message.** Never send

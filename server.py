@@ -14,6 +14,7 @@ from mcp.types import ToolAnnotations
 
 from src.browser.pacing import RateLimiter
 from src.browser.session import ensure_logged_in, get_session
+from src.cart import add_to_cart
 from src.errors import NotLoggedInError
 from src.extract.orders import track_orders
 from src.extract.product import parse_product
@@ -118,6 +119,25 @@ async def taobao_export_xlsx(products: list[Product], filename: str) -> str:
     """
     path = await anyio.to_thread.run_sync(write_xlsx, products, filename)  # don't block the loop
     return f"Wrote {len(products)} product(s) to {path} — sheets: Summary, Variants, Reviews."
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False))
+async def taobao_add_to_cart(
+    product_url_or_id: str,
+    options: list[str] | None = None,
+    qty: int = 1,
+    confirm: bool = False,
+) -> str:
+    """Stage one product+variant into the cart — the hand-off to your China agent.
+
+    Preview-only unless confirm=True (gated write). `options` = one value per variant
+    group (e.g. ["P100 质保3年 以换代修"]). NEVER buys, checks out, pays, or picks an address —
+    only clicks 加入购物车. Example: {"product_url_or_id":"736546459871","options":["P100 质保7天 80个起售"],"qty":1,"confirm":true}
+    """
+    if await ensure_logged_in() != "logged_in":
+        raise NotLoggedInError()
+    await _rate_limiter.acquire()
+    return await add_to_cart(product_url_or_id, options=options, qty=qty, confirm=confirm)
 
 
 def main() -> None:
