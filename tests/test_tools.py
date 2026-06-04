@@ -20,6 +20,8 @@ EXPECTED = {
     "taobao_track_orders",
     "taobao_export_xlsx",
     "taobao_add_to_cart",
+    "taobao_read_messages",
+    "taobao_send_reply",
 }
 
 
