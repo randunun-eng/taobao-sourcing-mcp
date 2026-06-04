@@ -91,42 +91,48 @@ async def track_orders(only_active: bool = True, max_drill: int = 10) -> list[Or
     ids = await page.evaluate(ORDER_LIST_JS)
 
     orders: list[OrderStatus] = []
-    for oid in ids[:max_drill]:
-        o = OrderStatus(order_id=oid, title="", status="未知")
-        lp = None
-        try:
-            # Fresh tab per order — the dinamic logistics page wedges after a few
-            # consecutive navs on a reused tab (Appendix B); a new tab sidesteps that.
-            lp = await session.context.new_page()
-            await lp.goto(_LOGISTICS_URL.format(oid=oid), wait_until="domcontentloaded")
-            ltext = ""
-            for _ in range(6):  # the dinamic frame renders async + slowly — poll ~12s
-                await human_delay(1.4, 2.0)
-                for fr in lp.frames:
-                    try:
-                        t = await fr.evaluate("() => document.body ? document.body.innerText : ''")
-                    except Exception:
-                        t = ""
-                    if t and ("快递" in t or "驿站" in t or any(c in t for c in CARRIERS)):
-                        ltext = t
+    # ONE dedicated logistics tab, REUSED across all orders. Do NOT open a fresh tab per
+    # order — rapid repeated tab-opening is a flag/block risk. We navigate this single tab
+    # sequentially, well-paced (human_delay between orders), and only recreate it at most
+    # once if it wedges (Appendix B), never in a burst.
+    lp = await session.context.new_page()
+    try:
+        for oid in ids[:max_drill]:
+            o = OrderStatus(order_id=oid, title="", status="未知")
+            try:
+                await lp.goto(_LOGISTICS_URL.format(oid=oid), wait_until="domcontentloaded")
+                ltext = ""
+                for _ in range(6):  # the dinamic frame renders async + slowly — poll ~12s
+                    await human_delay(1.4, 2.0)
+                    for fr in lp.frames:
+                        try:
+                            t = await fr.evaluate("() => document.body ? document.body.innerText : ''")
+                        except Exception:
+                            t = ""
+                        if t and ("快递" in t or "驿站" in t or any(c in t for c in CARRIERS)):
+                            ltext = t
+                            break
+                    if ltext:
                         break
-                if ltext:
-                    break
-            info = parse_logistics(ltext)
-            o.carrier, o.tracking_no = info["carrier"], info["tracking_no"]
-            o.pickup_code, o.station = info["pickup_code"], info["station"]
-            o.status = info["latest"] or "未知"
-            o.latest = info["latest"]
-        except Exception:
-            pass
-        finally:
-            if lp is not None:
+                info = parse_logistics(ltext)
+                o.carrier, o.tracking_no = info["carrier"], info["tracking_no"]
+                o.pickup_code, o.station = info["pickup_code"], info["station"]
+                o.status = info["latest"] or "未知"
+                o.latest = info["latest"]
+            except Exception:
+                # the reused tab may have wedged — recreate it ONCE (spaced by the
+                # human_delay below, so still no burst) so the next order has a live tab.
                 try:
                     await lp.close()
                 except Exception:
                     pass
-        await human_delay(4.0, 7.0)   # space logistics requests — rapid bursts get throttled
-        if only_active and o.status in ("已签收", "交易成功"):
-            continue   # drop already-collected orders
-        orders.append(o)
+                lp = await session.context.new_page()
+            if not (only_active and o.status in ("已签收", "交易成功")):
+                orders.append(o)   # drop already-collected orders when only_active
+            await human_delay(4.0, 7.0)   # space logistics navigations — never burst
+    finally:
+        try:
+            await lp.close()
+        except Exception:
+            pass
     return orders
