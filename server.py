@@ -100,16 +100,21 @@ async def taobao_fetch_reviews(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
-async def taobao_track_orders(only_active: bool = True, max: int = 12) -> list[OrderStatus]:
+async def taobao_track_orders(only_active: bool = True, max: int = 12, force: bool = False) -> list[OrderStatus]:
     """Track 已买到的宝贝: per order — status, carrier + tracking#, 取件码 (pickup OTP) + station.
 
     Read-only daily digest to forward to your China agent for collection. Drills logistics
-    only for active orders (待发货/待收货/运输中/待取件). Example: {"only_active": true, "max": 12}
+    only for active orders (待发货/待收货/运输中/待取件). RUNS ONCE PER DAY: the first call each
+    day fetches live; later same-day calls return the cache (no Taobao traffic). Set
+    force=true only to refresh mid-day. Example: {"only_active": true, "max": 12}
     """
     if await ensure_logged_in() != "logged_in":
         raise NotLoggedInError()
-    await _rate_limiter.acquire()
-    return await track_orders(only_active=only_active, max_drill=max)
+    from src.extract.orders import has_cached_today
+
+    if force or not has_cached_today():   # pace only when we'll actually hit Taobao
+        await _rate_limiter.acquire()
+    return await track_orders(only_active=only_active, max_drill=max, force=force)
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))

@@ -8,13 +8,59 @@ writes, no purchasing — the buyer forwards the digest to the China agent who c
 
 from __future__ import annotations
 
+import json
 import re
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from src.models import OrderStatus
 
 CARRIERS = ("顺丰", "中通", "圆通", "韵达", "申通", "邮政", "京东", "极兔", "德邦", "百世", "菜鸟")
 ACTIVE_STATUSES = ("待发货", "待收货", "运输中", "待取件", "派送中")
 _LOGISTICS_URL = "https://market.m.taobao.com/app/dinamic/pc-trade-logistics/home.html?orderId={oid}"
+
+# Once-per-day cap (anti-detection): the first run each day fetches live and caches the
+# result; same-day re-calls serve the cache (zero extra Taobao traffic) unless force=True.
+# Stored under the gitignored output dir — it holds order PII (tracking#/取件码), local only.
+_CN_TZ = timezone(timedelta(hours=8))  # China is UTC+8 year-round (no DST); no tzdata needed
+
+
+def _today_cn() -> str:
+    return datetime.now(_CN_TZ).strftime("%Y-%m-%d")
+
+
+def _state_file() -> Path:
+    from src.config import load_config
+    return Path(load_config().output.dir) / ".track_state.json"
+
+
+def _load_cached_today() -> list[OrderStatus] | None:
+    """Return today's cached orders if the digest already ran today, else None."""
+    try:
+        data = json.loads(_state_file().read_text(encoding="utf-8"))
+        if data.get("date") == _today_cn():
+            return [OrderStatus(**o) for o in data.get("orders", [])]
+    except Exception:
+        pass
+    return None
+
+
+def has_cached_today() -> bool:
+    """True if today's digest already ran (so a re-call would serve cache, not fetch)."""
+    return _load_cached_today() is not None
+
+
+def _save_cache(orders: list[OrderStatus]) -> None:
+    try:
+        p = _state_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            json.dumps({"date": _today_cn(), "orders": [o.model_dump() for o in orders]},
+                       ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass  # caching is best-effort; never fail the digest over it
 
 # Collect distinct order#s in document order (newest first). The new orders page doesn't
 # expose clean per-card status, so we read each order's real status from its logistics page.
@@ -72,12 +118,23 @@ def order_digest(orders: list[OrderStatus]) -> str:
     return md
 
 
-async def track_orders(only_active: bool = True, max_drill: int = 10) -> list[OrderStatus]:
+async def track_orders(
+    only_active: bool = True, max_drill: int = 10, force: bool = False
+) -> list[OrderStatus]:
     """Live: read order#s from 已买到的宝贝, then drill the newest `max_drill` orders'
     logistics for real status + carrier/tracking# + 取件码 + station (read-only).
 
     only_active drops orders whose logistics status is already 已签收/交易成功.
+
+    ONCE-PER-DAY cap (anti-detection): the first call each day fetches live and caches the
+    result; later same-day calls return the cache with NO Taobao traffic. Pass force=True
+    only when you genuinely need a same-day refresh (e.g. a parcel just arrived).
     """
+    if not force:
+        cached = _load_cached_today()
+        if cached is not None:
+            return cached   # already ran today — serve cache, hit Taobao zero times
+
     from src.browser.pacing import human_delay, human_scroll
     from src.browser.session import get_session
 
@@ -135,4 +192,5 @@ async def track_orders(only_active: bool = True, max_drill: int = 10) -> list[Or
             await lp.close()
         except Exception:
             pass
+    _save_cache(orders)   # stamp today's run so same-day re-calls serve the cache
     return orders

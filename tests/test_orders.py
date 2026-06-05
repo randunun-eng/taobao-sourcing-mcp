@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+from src.extract import orders as O
 from src.extract.orders import order_digest, parse_logistics, parse_order_title
 from src.models import OrderStatus
 
@@ -47,3 +50,24 @@ def test_order_digest_emits_pickup_message():
     md = order_digest(orders)
     assert "1-2-3456" in md and "3304" in md
     assert "今日待取件" in md          # ready-to-forward Chinese agent message
+
+
+def test_track_orders_once_per_day_cache(tmp_path, monkeypatch):
+    """The once-per-day cap: today's cache is served; a stale (past-date) cache is ignored."""
+    state = tmp_path / ".track_state.json"
+    monkeypatch.setattr(O, "_state_file", lambda: state)
+
+    assert O.has_cached_today() is False          # nothing cached yet → would fetch live
+    assert O._load_cached_today() is None
+
+    sample = [OrderStatus(order_id="X1", title="t", status="待取件", carrier="顺丰",
+                          tracking_no="SF123456", pickup_code="8-2-1234", station="菜鸟驿站")]
+    O._save_cache(sample)                          # stamps today's date
+    assert O.has_cached_today() is True            # same-day re-call serves cache (no Taobao hit)
+    got = O._load_cached_today()
+    assert got is not None and len(got) == 1 and got[0].pickup_code == "8-2-1234"
+
+    # a cache from a previous day must NOT count as today's run
+    state.write_text(json.dumps({"date": "2000-01-01", "orders": []}), encoding="utf-8")
+    assert O.has_cached_today() is False
+    assert O._load_cached_today() is None

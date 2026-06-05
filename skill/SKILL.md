@@ -104,10 +104,14 @@ speed.
   **China agent** checks out (picks the forwarder address) and pays. **You never check
   out, pay, or choose an address.** Adding is reversible; the human can remove items.
 
-### 7. Track orders + 取件码 pickup digest (read-only, daily)
+### 7. Track orders + 取件码 pickup digest (read-only, ONCE per day)
 - Call `taobao_track_orders(only_active=True, max=…)` → for each active order it returns
   status, carrier + tracking#, and (when a parcel is at a 菜鸟驿站/快递柜) the **取件码**
   (pickup OTP) + station.
+- **Run it at most once a day.** The tool self-enforces this: the first call each day
+  fetches live and caches; later same-day calls return the cache (no Taobao traffic). Only
+  pass `force=True` if the human explicitly needs a mid-day refresh (e.g. a parcel just
+  landed). Don't poll it repeatedly — repeated runs look bot-like and risk a block.
 - Render it as a table, and produce a short **Chinese message the human forwards to their
   agent** listing each parcel's tracking# + 取件码 + station for physical collection.
 - This is **read-only** — no writes, no purchasing. If a code/station comes back 未知 for
