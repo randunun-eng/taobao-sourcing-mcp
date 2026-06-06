@@ -59,6 +59,31 @@ async def add_to_cart(
             raise ProductNotFoundError(f"could not select option {value!r} on product {pid}: {exc}")
         await human_delay(0.6, 1.2)
 
+    # VALIDATE the clicks physically registered (CLAUDE.md Appendix B.8). A complete, valid
+    # variant selection makes the live page set &skuId=… ; if it's absent, the chips did NOT
+    # take (the failure mode that silently dropped half the jumper-wire order). Retry once,
+    # then REFUSE to add rather than stage the wrong/incomplete item.
+    import re as _re
+
+    def _live_sku() -> str | None:
+        m = _re.search(r"[?&]skuId=(\d+)", page.url)
+        return m.group(1) if m else None
+
+    sku_id = _live_sku()
+    if options and not sku_id:
+        for value in options:  # one retry pass of the chip clicks
+            try:
+                await page.get_by_text(value, exact=True).first.click(timeout=4000)
+                await human_delay(0.5, 1.0)
+            except Exception:
+                pass
+        sku_id = _live_sku()
+    if options and not sku_id:
+        raise ProductNotFoundError(
+            f"variant {options} did not register on product {pid} (no skuId after clicking — "
+            f"the chip selection was not validated). Refusing to add the wrong item; retry."
+        )
+
     if qty and int(qty) != 1:
         try:
             await page.locator('input[class*="countValue"]').first.fill(str(int(qty)), timeout=3000)
@@ -83,4 +108,96 @@ async def add_to_cart(
     import re
     added = bool(re.search(_SUCCESS_RE, await page.evaluate("() => document.body ? document.body.innerText : ''")))
     head = "added to cart" if added else "clicked 加入购物车 (no success toast seen — check the cart)"
-    return f"{head}: {product.title[:44]} · {label} · qty {qty}."
+    sku_note = f" · skuId {sku_id}" if sku_id else ""
+    return f"{head}: {product.title[:44]} · {label} · qty {qty}{sku_note}."
+
+
+async def add_to_cart_batch(
+    product_url_or_id: str,
+    items: list[dict],
+    confirm: bool = False,
+) -> str:
+    """Stage MANY variants of ONE product in a SINGLE page visit (anti-burst).
+
+    items = [{"options": [v1, v2, ...], "qty": packs}, ...] — one entry per cart line.
+    Preview-validates every chip exists (confirm=False, no writes); confirm=True selects
+    each variant + clicks 加入购物车, all on one loaded page, paced. Never buys/checks out.
+    """
+    from src.browser.pacing import human_delay, human_scroll
+    from src.browser.session import get_session
+    from src.extract.product import _to_product_id, parse_product_html
+
+    pid = _to_product_id(product_url_or_id)
+    session = get_session()
+    page = await session.start()
+    url = f"https://item.taobao.com/item.htm?id={pid}"
+    await page.goto(url, wait_until="domcontentloaded")
+    await session.guard_captcha(page)
+    await human_scroll(page, 2)
+    await human_delay(1.5, 2.5)
+    product = parse_product_html(await page.content(), pid, url)
+
+    lines: list[str] = []
+    added = 0
+    for it in items:
+        opts = list(it.get("options") or [])
+        qty = int(it.get("qty", 1))
+        label = " / ".join(opts)
+        missing = [v for v in opts if await page.get_by_text(v, exact=True).count() == 0]
+        if missing:
+            lines.append(f"  ✗ {label} ×{qty} — chip not found: {missing}")
+            continue
+        if not confirm:
+            lines.append(f"  • {label} ×{qty}")
+            continue
+        try:
+            for v in opts:  # select each option group (exact chip)
+                await page.get_by_text(v, exact=True).first.click(timeout=4000)
+                await human_delay(0.4, 0.9)
+            # VALIDATE the selection registered (Appendix B.8): skuId must appear in the URL,
+            # else the chip clicks silently failed (this batch path's known failure mode).
+            # Report an honest ✗ and skip the add rather than falsely confirming.
+            import re as _re
+            if not _re.search(r"[?&]skuId=(\d+)", page.url):
+                lines.append(f"  ✗ {label} ×{qty} — selection not validated (no skuId)")
+                await human_delay(0.6, 1.0)
+                continue
+            if qty != 1:
+                try:
+                    await page.locator('input[class*="countValue"]').first.fill(str(qty), timeout=3000)
+                    await human_delay(0.3, 0.7)
+                except Exception:
+                    pass
+            await page.get_by_text(_ADD_BTN, exact=True).first.click(timeout=5000)
+            # The "成功加入购物车" dialog (z≈1e9) pops up and BLOCKS the next selection.
+            # Wait for it to appear (= the add is confirmed) then auto-dismiss; Escape if it lingers.
+            confirmed = False
+            try:
+                dlg = page.locator('[class*="dialogContent--"]').first
+                await dlg.wait_for(state="visible", timeout=3500)
+                confirmed = True
+                try:
+                    await dlg.wait_for(state="hidden", timeout=7000)
+                except Exception:
+                    try:
+                        await page.keyboard.press("Escape")
+                    except Exception:
+                        pass
+            except Exception:
+                try:
+                    await page.keyboard.press("Escape")
+                except Exception:
+                    pass
+            await human_delay(0.6, 1.1)
+            await session.guard_captcha(page)
+            lines.append(f"  {'✓' if confirmed else '?'} {label} ×{qty}")
+            added += 1 if confirmed else 0
+        except Exception as exc:
+            lines.append(f"  ✗ {label} ×{qty} — {type(exc).__name__}")
+        await human_delay(0.8, 1.6)  # human pacing between adds (one tab, no bursts)
+
+    head = (f"PREVIEW — would add {len(items)} line(s) of «{product.title[:38]}» in one visit "
+            f"(nothing added yet; re-call confirm=True):"
+            if not confirm else
+            f"Added {added}/{len(items)} line(s) of «{product.title[:38]}» to cart:")
+    return head + "\n" + "\n".join(lines)

@@ -100,6 +100,16 @@ speed.
   `["黑色","L"]`). If you omit it on a multi-variant item the tool lists the available
   choices — relay those and let the human pick the exact tier.
 - **Only after the human OKs that exact line**, call again with `confirm=True` to add it.
+- **Physically click + validate every variant — never trust extracted labels (Appendix B.8).**
+  The tool now confirms each selection registered (the live `skuId` appears) before it clicks
+  加入购物车, and **refuses to add** if it didn't. Add **one variant per call** (each a fresh
+  page visit) — do **not** batch many variants in one visit (the post-add success dialog
+  silently drops later selections). After a multi-line order, **reconcile against the cart's
+  own data** and report exactly what landed; don't assume the adds all worked.
+- **Quantity is per PACK, not per piece.** A `（10条）` option is a 10-piece pack and `qty`
+  multiplies packs (qty 3 = 30 pcs); a `…各10条` multicolor option is a fixed 60-piece pack.
+  Read the real count + price off the live page for the *exact* selected combo — don't compute
+  it from the label.
 - The cart is where your job ends: the human tags each item **sea or air** and their
   **China agent** checks out (picks the forwarder address) and pays. **You never check
   out, pay, or choose an address.** Adding is reversible; the human can remove items.
