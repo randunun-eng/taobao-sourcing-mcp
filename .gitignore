@@ -20,3 +20,6 @@ _base_repo/
 
 # Raw page captures may embed account tokens/nick — keep only sanitized *_res.json fixtures
 tests/fixtures/**/page.html
+
+# Buyer's private sourcing profile (business strategy / product lines) — local-only, never public
+skill/sourcing_profile.md
