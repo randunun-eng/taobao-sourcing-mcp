@@ -12,6 +12,22 @@ from src.errors import CaptchaError, ProductNotFoundError  # noqa: F401
 _ADD_BTN = "加入购物车"
 _SUCCESS_RE = r"加入购物车成功|已加入购物车|成功加入|添加成功|加购成功"
 
+# Add to cart via the mtop.trade.addBag API using the page's own lib.mtop SDK (it handles
+# signing + the login/ecode token). Robust on both Taobao and Tmall, where the SSR 加入购物车
+# button isn't reliably clickable. Returns {ok, ret} — ret contains "SUCCESS::调用成功" on success.
+_ADDBAG_JS = r"""async ([itemId, skuId, qty]) => {
+  if (!(window.lib && window.lib.mtop)) return { ok: false, err: 'no lib.mtop' };
+  try {
+    const res = await window.lib.mtop.request({
+      api: 'mtop.trade.addBag', v: '3.1', type: 'POST', ecode: 1, needLogin: true, dataType: 'json',
+      data: { itemId: String(itemId), skuId: String(skuId), quantity: Number(qty) || 1,
+              exParams: JSON.stringify({ id: String(itemId) }) }
+    });
+    const ret = (res && res.ret) ? String(res.ret) : '';
+    return { ok: ret.indexOf('SUCCESS') >= 0, ret: ret };
+  } catch (e) { return { ok: false, err: String(e).slice(0, 140) }; }
+}"""
+
 
 async def add_to_cart(
     product_url_or_id: str,
@@ -96,12 +112,27 @@ async def add_to_cart(
         return (f"PREVIEW — ready to add: {product.title[:44]} · variant: {label} · qty {qty}. "
                 f"Re-call with confirm=True to add it. (Cart only — never buys or picks an address.)")
 
+    # PRIMARY add path: the mtop.trade.addBag API via the page's own lib.mtop SDK (it signs
+    # + carries the login/ecode token). Works on BOTH Taobao and Tmall — unlike clicking 加入
+    # 购物车, which the SSR detail.tmall.com page doesn't reliably expose. Needs the validated skuId.
+    if sku_id:
+        api = await page.evaluate(_ADDBAG_JS, [pid, sku_id, int(qty)])
+        if api and api.get("ok"):
+            await session.guard_captcha(page)
+            return f"added to cart (API): {product.title[:44]} · {label} · qty {qty} · skuId {sku_id}."
+        api_err = (api or {}).get("ret") or (api or {}).get("err") or "unknown"
+    else:
+        api_err = "no skuId"
+
+    # Fallback: click the 加入购物车 button (works on classic Taobao item pages).
     try:
         btn = page.get_by_text(_ADD_BTN, exact=True).first
         await btn.scroll_into_view_if_needed(timeout=3000)
         await btn.click(timeout=5000)
     except Exception as exc:
-        raise ProductNotFoundError(f"could not click 加入购物车 on product {pid}: {exc}")
+        raise ProductNotFoundError(
+            f"could not add product {pid}: addBag API said [{api_err}]; 加入购物车 click also failed: {exc}"
+        )
     await human_delay(1.5, 2.5)
     await session.guard_captcha(page)  # adding can trigger a slider
 
@@ -162,36 +193,18 @@ async def add_to_cart_batch(
                 lines.append(f"  ✗ {label} ×{qty} — selection not validated (no skuId)")
                 await human_delay(0.6, 1.0)
                 continue
-            if qty != 1:
-                try:
-                    await page.locator('input[class*="countValue"]').first.fill(str(qty), timeout=3000)
-                    await human_delay(0.3, 0.7)
-                except Exception:
-                    pass
-            await page.get_by_text(_ADD_BTN, exact=True).first.click(timeout=5000)
-            # The "成功加入购物车" dialog (z≈1e9) pops up and BLOCKS the next selection.
-            # Wait for it to appear (= the add is confirmed) then auto-dismiss; Escape if it lingers.
-            confirmed = False
-            try:
-                dlg = page.locator('[class*="dialogContent--"]').first
-                await dlg.wait_for(state="visible", timeout=3500)
-                confirmed = True
-                try:
-                    await dlg.wait_for(state="hidden", timeout=7000)
-                except Exception:
-                    try:
-                        await page.keyboard.press("Escape")
-                    except Exception:
-                        pass
-            except Exception:
-                try:
-                    await page.keyboard.press("Escape")
-                except Exception:
-                    pass
-            await human_delay(0.6, 1.1)
+            # Add via the addBag API (skuId validated above) — robust on Taobao + Tmall, AND it
+            # avoids the success-dialog that used to block the next chip selection in this loop
+            # (the original failure mode in B.8). No button click, no dialog to dismiss.
+            sku_id = _re.search(r"[?&]skuId=(\d+)", page.url).group(1)
+            api = await page.evaluate(_ADDBAG_JS, [pid, sku_id, qty])
+            if api and api.get("ok"):
+                lines.append(f"  ✓ {label} ×{qty}")
+                added += 1
+            else:
+                err = (api or {}).get("ret") or (api or {}).get("err") or "addBag failed"
+                lines.append(f"  ✗ {label} ×{qty} — {err}")
             await session.guard_captcha(page)
-            lines.append(f"  {'✓' if confirmed else '?'} {label} ×{qty}")
-            added += 1 if confirmed else 0
         except Exception as exc:
             lines.append(f"  ✗ {label} ×{qty} — {type(exc).__name__}")
         await human_delay(0.8, 1.6)  # human pacing between adds (one tab, no bursts)
