@@ -9,13 +9,23 @@ Claude **Skill** (sourcing playbook) and **Chinese supplier-message templates**
 (drafted by Claude, sent manually by you).
 
 > Built on the QR-login + persistent-session approach of `JeremyDong22/taobao_mcp`,
-> rebuilt as 6 FastMCP tools with embedded-data + DOM extraction (mtop interception kept as a fallback), per-SKU pricing,
-> variant-linked reviews, xlsx export, and a captcha human-handoff.
+> rebuilt as **10 FastMCP tools** with embedded-data + DOM extraction (mtop interception
+> kept as a fallback): search, per-SKU pricing, variant-linked reviews, xlsx export,
+> **gated cart staging** (adds via the `mtop.trade.addBag` API — works on Taobao *and*
+> Tmall), **confirm-then-send seller messaging**, and a **daily order-tracking + 取件码
+> pickup-code digest** — plus a captcha human-handoff and anti-detection pacing.
+
+## Scope — it does four things
+**Find** legitimate products · **add to cart** · **communicate with sellers** (you confirm
+each message) · **track orders** (+ 取件码 pickup codes). You + your buying agent handle
+**payment, the delivery address, checkout, and all logistics** — the tool hands off at the
+cart and the tracking digest.
 
 ## What it does NOT do
-No headless scraping, no proxy rotation, no captcha-solving service, no
-auto-messaging, no cloud. **Not getting your account flagged is the priority, not
-speed.**
+No headless scraping, no proxy rotation, no captcha-solving service, no cloud. It **never
+pays, checks out, or picks a shipping address**, and it **never blind-sends** a seller
+message (confirm-then-send — you approve each one). **Not getting your account flagged is
+the priority, not speed.**
 
 ---
 
@@ -52,6 +62,8 @@ For Claude Desktop, register it as an MCP server pointing at the **full venv pyt
 path** and `server.py` (use absolute paths — `/Volumes/...`).
 
 ## First-run login (once per session)
+You log in with **your own** Taobao account — no account, cookie, or profile ships in this
+repo (`user_data/` is gitignored and lives only on your machine).
 1. Call `taobao_initialize_login` (or just `taobao_fetch_product` — it auto-ensures login).
 2. A **visible Chrome window** opens to the Taobao QR page.
 3. **Scan the QR with your Taobao app.** The server polls and continues automatically.
@@ -63,15 +75,19 @@ path** and `server.py` (use absolute paths — `/Volumes/...`).
 | `taobao_initialize_login` | Open Chrome, QR login (you scan). |
 | `taobao_session_status` | Login/health (read-only). |
 | `taobao_search` | Keyword → result list for you to pick from. |
-| `taobao_fetch_product` | One product: **every SKU variant + price/stock**, specs, images. |
+| `taobao_fetch_product` | One product: **every SKU variant + price/stock**, specs, images. (`deep_price=True` clicks each variant for the live after-subsidy price.) |
 | `taobao_fetch_reviews` | Recent reviews, each tagged with the variant bought. |
+| `taobao_add_to_cart` | **Gated** cart staging — preview, then `confirm=True`; selects + validates the variant, adds via the cart API (Taobao **and** Tmall). Never buys/checks out. |
+| `taobao_read_messages` | Read seller IM conversations + a thread's messages (read-only). |
+| `taobao_send_reply` | Send a seller message — **confirm-then-send** (preview, then `confirm=True`). |
+| `taobao_track_orders` | Daily digest: per order — status, carrier + tracking#, **取件码 pickup code** + station. Caps to one live run/day. |
 | `taobao_export_xlsx` | 3-sheet comparison workbook (Summary / Variants / Reviews). |
 
 ## The Skill
 `skill/SKILL.md` is the sourcing playbook (search → you pick → fetch → translate →
 summarize reviews → normalize price-per-unit → compare → export → flag risks).
-`skill/supplier_templates.md` has Chinese message templates — **Claude drafts, you
-send via Wangwang.**
+`skill/supplier_templates.md` has Chinese message templates — **Claude drafts; sent via
+`taobao_send_reply` only after you confirm that exact message** (never blind auto-send).
 
 ---
 

@@ -37,7 +37,7 @@ def test_parse_logistics_empty():
 
 
 def test_parse_order_title_strips_status_and_orderno():
-    t = parse_order_title("交易成功 特斯拉P100 16G显卡 订单号: 3304427738111114175 中通")
+    t = parse_order_title("交易成功 特斯拉P100 16G显卡 订单号: 1234567890123456789 中通")
     assert "P100" in t and "订单号" not in t
 
 
