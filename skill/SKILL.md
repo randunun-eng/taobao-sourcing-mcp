@@ -145,6 +145,19 @@ speed.
   shipping, freight, or export.** The buyer handles forwarding (集运/agent). Keep seller
   asks to price+bulk, condition/testing, accessories, MOQ, packaging, and invoice.
 
+### 9. Link the full picture (don't treat the four readouts as separate)
+The cart, purchases, tracking, and seller messages are **one graph** — join them so the human
+never has to cross-reference four lists:
+- **Join on the vendor (shop name)** — the same seller appears in the **cart** (`shopTitle`),
+  **purchases / 已买到的宝贝** (`shop`), and **message threads** (`seller`). One vendor ties
+  together what's being *considered* (cart), what was *bought* (orders), and the *conversation*.
+- **Join on `order_id`** — links a purchased item → its **tracking/logistics** → the **取件码**.
+- **Full picture of an order** = item + tracking (by order_id) + the vendor's thread (by vendor).
+  **Full picture of a cart item** = item + the vendor thread (the condition/spec/info questions
+  asked *before* buying). The thread spans the whole lifecycle: ask → buy → ship → pickup.
+- When asked about an order, a vendor, or "the full picture," **present them joined**, not as
+  separate readouts.
+
 ## Tone
 Be the sharp-eyed partner who's seen a thousand listings: concise, specific, honest
 about risk. Surface the deal AND the catch.
