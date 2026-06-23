@@ -82,6 +82,7 @@ class OrderStatus(BaseModel):
     latest: str | None = None            # latest logistics line
     pickup_code: str | None = None       # 取件码 / 取货码 (OTP to collect at a station)
     station: str | None = None           # 驿站 / 快递柜 name
+    seller: str | None = None            # shop the order is from (for the vendor join)
 
 
 class SellerMessage(BaseModel):
@@ -105,3 +106,27 @@ class Conversation(BaseModel):
     time: str | None = None
     unread: int = 0
     messages: list[SellerMessage] = Field(default_factory=list)
+
+
+class CartItem(BaseModel):
+    """One staged cart line (for the vendor join). Lighter than a full Product."""
+
+    seller: str                          # shopTitle — the vendor join key
+    title: str
+    sku_id: str | None = None
+    quantity: int = 1
+
+
+class VendorDossier(BaseModel):
+    """The 'full picture' for one vendor — cart + orders(+tracking) + the message thread,
+    joined on shop name (and order_id for tracking). CLAUDE.md §0 / SKILL.md §9.
+
+    `unlinked=True` marks an IM thread that couldn't be confidently tied to a known vendor
+    (shown on its own rather than mis-attributed).
+    """
+
+    seller: str
+    cart_items: list[CartItem] = Field(default_factory=list)
+    orders: list[OrderStatus] = Field(default_factory=list)   # purchases merged with tracking
+    thread: list[SellerMessage] = Field(default_factory=list)
+    unlinked: bool = False

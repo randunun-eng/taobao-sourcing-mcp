@@ -22,6 +22,7 @@ EXPECTED = {
     "taobao_add_to_cart",
     "taobao_read_messages",
     "taobao_send_reply",
+    "taobao_full_picture",
 }
 
 

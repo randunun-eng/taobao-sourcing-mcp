@@ -16,12 +16,13 @@ from src.browser.pacing import RateLimiter
 from src.browser.session import ensure_logged_in, get_session
 from src.cart import add_to_cart
 from src.errors import NotLoggedInError
+from src.extract.linker import full_picture
 from src.extract.messages import read_messages, send_reply
 from src.extract.orders import track_orders
 from src.extract.product import parse_product
 from src.extract.reviews import parse_reviews
 from src.extract.search import parse_search
-from src.models import Conversation, OrderStatus, Product, Review, SearchResult
+from src.models import Conversation, OrderStatus, Product, Review, SearchResult, VendorDossier
 from src.output.xlsx_writer import write_xlsx
 
 mcp = FastMCP("taobao-sourcing")
@@ -178,6 +179,21 @@ async def taobao_send_reply(seller: str, message: str, confirm: bool = False) ->
         raise NotLoggedInError()
     await _rate_limiter.acquire()
     return await send_reply(seller, message, confirm=confirm)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+async def taobao_full_picture(seller: str | None = None, order_id: str | None = None) -> list[VendorDossier]:
+    """The 'full picture' — joins your cart + orders (+ tracking/取件码) + seller chats by vendor.
+
+    Three modes from one tool: `seller` → that vendor's dossier (cart + orders + thread);
+    `order_id` → that order joined to its tracking + the vendor's thread; neither → an overview
+    of every linked vendor. Read-only; IM threads that can't be confidently matched are flagged
+    `unlinked`, never guessed. Example: {"seller": "好管家旗舰店"} or {"order_id": "3309..."}
+    """
+    if await ensure_logged_in() != "logged_in":
+        raise NotLoggedInError()
+    await _rate_limiter.acquire()
+    return await full_picture(seller=seller, order_id=order_id)
 
 
 def main() -> None:
