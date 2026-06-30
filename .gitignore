@@ -23,3 +23,10 @@ tests/fixtures/**/page.html
 
 # Buyer's private sourcing profile (business strategy / product lines) — local-only, never public
 skill/sourcing_profile.md
+
+# Local Claude Code MCP registration (machine-specific paths)
+.mcp.json
+
+# Local one-off dev/exploration scripts (the pipeline lives in src/inventory.py); may hold
+# machine-specific paths or buyer-specific data — keep local, not in the shared repo
+scripts/

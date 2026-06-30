@@ -82,6 +82,8 @@ repo (`user_data/` is gitignored and lives only on your machine).
 | `taobao_send_reply` | Send a seller message — **confirm-then-send** (preview, then `confirm=True`). |
 | `taobao_track_orders` | Daily digest: per order — status, carrier + tracking#, **取件码 pickup code** + station. Caps to one live run/day. |
 | `taobao_export_xlsx` | 3-sheet comparison workbook (Summary / Variants / Reviews). |
+| `taobao_full_picture` | Joins cart + orders (+ tracking/取件码) + seller chats **by vendor** — per-seller, per-order, or an overview. |
+| `taobao_export_inventory` | Pages the full purchase history → a **visual inventory** workbook: embedded thumbnail (or `=IMAGE` for Google Sheets) + variant per line, with **landed cost** (product + shipping allocated by qty) and a By-Category sheet. |
 
 ## The Skill
 `skill/SKILL.md` is the sourcing playbook (search → you pick → fetch → translate →

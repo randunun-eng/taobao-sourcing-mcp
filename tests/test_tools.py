@@ -23,6 +23,7 @@ EXPECTED = {
     "taobao_read_messages",
     "taobao_send_reply",
     "taobao_full_picture",
+    "taobao_export_inventory",
 }
 
 

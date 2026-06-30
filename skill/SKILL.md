@@ -158,6 +158,29 @@ never has to cross-reference four lists:
 - When asked about an order, a vendor, or "the full picture," **present them joined**, not as
   separate readouts.
 
+### 10. Export the purchase history as an inventory (landed cost)
+`taobao_export_inventory` pages the **full** order history (the buyer list's own pagination is the
+only path to it — the order API caps at the recent ~3 months) and writes a visual workbook: a
+product **thumbnail + variant per line**, products categorized, and a By-Category sheet.
+
+- **Landed cost (the key idea — explain it when asked "why is the price ¥X but I paid ¥Y").**
+  The per-line **product price** (`Unit ¥` / `Line ¥`) is *not* the total paid — Taobao adds
+  **含运费 (shipping)** at the **order** level. The tool computes **landed cost** by spreading the
+  order's one shipping fee across **all units in that order**: `shipping ÷ total order qty` →
+  per-unit shipping, added to the product unit price. So:
+  - `Ship ¥` = this line's allocated shipping · `Landed/u ¥` = product unit + shipping/unit ·
+    `Landed ¥` = Landed/u × qty.
+  - Each order's landed lines **sum to its 实付款** (single-item order: product + shipping = paid).
+  - Free-shipping (包邮) orders → `Ship ¥ 0`, so landed = product price.
+  - By-Category spend totals are **landed** (true cost incl. shipping).
+- **`embed_images=true`** embeds thumbnails (open in Numbers/Excel). **`false`** writes
+  `=IMAGE(url)` for **Google Sheets** — note Sheets renders these only after the .xlsx is uploaded
+  and **converted** (File → Save as Google Sheets); a CSV import keeps `=IMAGE` as literal text.
+- **`refresh=false`** reuses the cached crawl (no Taobao traffic) — use it to re-format/re-export
+  instantly. Categories are recovered from a prior inventory file so they aren't lost on re-run.
+- Opaque **custom-link lines** (`1元补差价` / payment-link orders with a huge "qty" and no real
+  product name) are **flagged** — decode the real product from the **vendor's chat** ([[§9]]).
+
 ## Tone
 Be the sharp-eyed partner who's seen a thousand listings: concise, specific, honest
 about risk. Surface the deal AND the catch.

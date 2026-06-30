@@ -16,6 +16,7 @@ from src.browser.pacing import RateLimiter
 from src.browser.session import ensure_logged_in, get_session
 from src.cart import add_to_cart
 from src.errors import NotLoggedInError
+from src.inventory import export_inventory
 from src.extract.linker import full_picture
 from src.extract.messages import read_messages, send_reply
 from src.extract.orders import track_orders
@@ -194,6 +195,33 @@ async def taobao_full_picture(seller: str | None = None, order_id: str | None = 
         raise NotLoggedInError()
     await _rate_limiter.acquire()
     return await full_picture(seller=seller, order_id=order_id)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False))
+async def taobao_export_inventory(
+    since: str = "2025-01-01",
+    filename: str = "inventory_2025_2026.xlsx",
+    embed_images: bool = True,
+    refresh: bool = True,
+) -> str:
+    """Export the full purchase history as a visual inventory workbook with LANDED cost.
+
+    Pages the buyer order list back to `since` (the only path to full history), computes each
+    line's landed cost (product price + order shipping allocated by qty), categorizes products,
+    and writes Image · Date · Category · Seller · Product · Variant · Qty · Unit ¥ · Line ¥ ·
+    Ship ¥ · Landed/u ¥ · Landed ¥ + a By-Category sheet. embed_images=true embeds thumbnails
+    (open in Numbers/Excel); false writes =IMAGE() URLs for Google Sheets. refresh=false reuses
+    the last crawl cache (no Taobao traffic). Food/instant-delivery orders are excluded by the
+    list itself. Example: {"since":"2025-01-01","embed_images":true}
+    """
+    if await ensure_logged_in() != "logged_in":
+        raise NotLoggedInError()
+    if refresh:
+        await _rate_limiter.acquire()
+    s = await export_inventory(since=since, filename=filename, embed_images=embed_images, refresh=refresh)
+    return (f"Wrote {s['lines']} line items ({s['orders']} orders, {s['date_range']}) to {s['path']}. "
+            f"Landed total ¥{s['landed_total']:,.2f}; {s['images']} images; "
+            f"{s['flagged']} custom-link lines flagged. Sheets: Inventory + By Category.")
 
 
 def main() -> None:
